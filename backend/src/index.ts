@@ -1,30 +1,17 @@
-import { Hono } from 'hono'
+import { Hono } from "hono";
+import { HonoGeneric } from "./types";
+import blogRoute from "./routes/blog";
+import userRoute from "./routes/user";
 
-const app = new Hono()
+const app = new Hono<HonoGeneric>();
 
-app.get('/', (c) => {
-  return c.text('Hello Hono!')
-})
+app.get("/", async (c) => {
+  console.log(c.env.JWT_SECRET);
 
-app.get('/api/v1/signup', (c) => {
-  return c.text('bla');
-})
+  return c.json({message: "medium blog"});
+});
 
-app.get('/api/v1/signin', (c) => {
-  return c.text('bla');
-})
+app.route("/api/v1/user", userRoute);
+app.route("/api/v1/blog", blogRoute);
 
-app.post('/api/v1/blog', (c) => {
-  return c.text('bla');
-})
-
-app.put('/api/v1/blog', (c) => {
-  return c.text('bla');
-})
-
-app.get('/api/v1/blog/:id', (c) => {
-  return c.text('bla');
-})
-
-
-export default app
+export default app;
