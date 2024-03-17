@@ -3,6 +3,7 @@ import { Blog, HonoGeneric, payload } from "../types";
 import { verify } from "hono/jwt";
 import { PrismaClient } from "@prisma/client/edge";
 import { withAccelerate } from "@prisma/extension-accelerate";
+import { blogPostBody, blogPutBody } from "@medium-blog/common";
 
 const blogRoute = new Hono<HonoGeneric>();
 
@@ -15,13 +16,14 @@ blogRoute.use("/*", async (c, next) => {
   }
 
   const token = bearerToken.split(" ")[1];
+
   let payload: { userId: string };
 
   try {
     payload = await verify(token, c.env.JWT_SECRET);
-  } catch (err) {
+  } catch (error) {
     c.status(401);
-    return c.json({ message: "you are not login", err: err });
+    return c.json({ message: "you are not login", error: error });
   }
 
   c.set("userId", payload.userId);
@@ -31,10 +33,14 @@ blogRoute.use("/*", async (c, next) => {
 blogRoute.post("/", async (c) => {
   const userId = c.get("userId");
 
-  const body: {
-    title: string;
-    content: string;
-  } = await c.req.json();
+  const body = await c.req.json();
+
+  const res = blogPostBody.safeParse(body);
+
+  if (!res.success) {
+    c.status(400);
+    return c.json({ message: "bad request", error: res.error });
+  }
 
   const prisma = new PrismaClient({
     datasourceUrl: c.env.DATABASE_URL,
@@ -51,18 +57,27 @@ blogRoute.post("/", async (c) => {
       },
     });
   } catch (err) {
-    c.status(403);
+    c.status(502);
     return c.json({ message: "something went wrong" });
   }
 
   c.status(200);
   return c.json({
-    id: blog.id,
+    message: "blog created",
+    blog,
   });
 });
 
 blogRoute.put("/", async (c) => {
   const body = await c.req.json();
+
+  const res = blogPutBody.safeParse(body);
+
+  if (!res.success) {
+    c.status(400);
+    return c.json({message: "Bad request", error: res.error});
+  }
+
   const prisma = new PrismaClient({
     datasourceUrl: c.env.DATABASE_URL,
   }).$extends(withAccelerate());
@@ -82,8 +97,16 @@ blogRoute.put("/", async (c) => {
     return c.json({ message: "went wrong" });
   }
 
+  if (!blog) {
+    c.status(404);
+    return c.json({message: "blog doesn't exist"});
+  }
+
   c.status(200);
-  return c.json({ id: blog.id, message: "post updated", blog });
+  return c.json({
+    message: "post updated",
+    blog,
+  });
 });
 
 blogRoute.get("/bulk", async (c) => {
@@ -91,13 +114,13 @@ blogRoute.get("/bulk", async (c) => {
     datasourceUrl: c.env.DATABASE_URL,
   }).$extends(withAccelerate());
 
-  let blogs;
-
+  let blogs: Blog[];
+  
   try {
     blogs = await prisma.post.findMany();
   } catch (err) {
-    c.status(400);
-    return c.json({ message: "" });
+    c.status(500);
+    return c.json({ message: "Something went wrong" });
   }
 
   c.status(200);
@@ -106,6 +129,7 @@ blogRoute.get("/bulk", async (c) => {
 
 blogRoute.get("/:id", async (c) => {
   const blogId = c.req.param("id");
+
   const prisma = new PrismaClient({
     datasourceUrl: c.env.DATABASE_URL,
   }).$extends(withAccelerate());
@@ -119,8 +143,13 @@ blogRoute.get("/:id", async (c) => {
       },
     });
   } catch (err) {
+    c.status(500);
+    return c.json({ message: "Something went wrong" });
+  }
+
+  if (!blog) {
     c.status(404);
-    return c.json({ message: "not found" });
+    return c.json({message: "Blog does not exist"});
   }
 
   c.status(200);

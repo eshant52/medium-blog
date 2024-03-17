@@ -5,15 +5,23 @@ import { withAccelerate } from "@prisma/extension-accelerate";
 import { sign } from "hono/jwt";
 import { User } from "../types";
 import { setExpiration } from "../utils";
+import { userSiginBody, userSignupBody } from "@medium-blog/common";
 
 const userRoute = new Hono<HonoGeneric>();
 
 userRoute.post("/signup", async (c) => {
+  const body = await c.req.json();
+  
+  const res = userSignupBody.safeParse(body);
+  
+  if (!res.success) {
+    c.status(400);
+    return c.json({ message: "Invalid request", error: res.error });
+  }
+
   const prisma = new PrismaClient({
     datasourceUrl: c.env?.DATABASE_URL,
   }).$extends(withAccelerate());
-
-  const body: { email: string; password: string } = await c.req.json();
 
   let user: User;
 
@@ -26,33 +34,45 @@ userRoute.post("/signup", async (c) => {
     });
   } catch (error) {
     if (error.code == "P2002") {
-      c.status(409);
+      c.status(403);
       return c.json({ message: "User email already exist" });
     }
 
-    c.status(403);
-    return c.json({ error: "error while signing up" });
+    c.status(502);
+    return c.json({ error: "Error from server side" });
   }
 
   const payload = {
     userId: user.id,
     exp: setExpiration(), // 12hr
+  };
+
+  let token: string;
+
+  try {
+    token = await sign(payload, c.env.JWT_SECRET);
+  } catch (err) {
+    c.status(500);
+    return c.json({ message: "Error while creating token" });
   }
 
-  if (user) {
-    const token = await sign(payload, c.env.JWT_SECRET);
-    return c.json({ token });
-  } else {
-    return c.json({ message: "user does not exist" });
-  }
+  c.status(200);
+  return c.json({ token });
 });
 
 userRoute.post("/signin", async (c) => {
+  const body = await c.req.json();
+  
+  const res = userSiginBody.safeParse(body);
+  
+  if (!res.success) {
+    c.status(400);
+    return c.json({ message: "Invalid request", error: res.error });
+  }
+
   const prisma = new PrismaClient({
     datasourceUrl: c.env.DATABASE_URL,
   }).$extends(withAccelerate());
-
-  const body: { email: string; password: string } = await c.req.json();
 
   let user: User;
 
@@ -68,24 +88,34 @@ userRoute.post("/signin", async (c) => {
     return c.json({ message: "Internal Server" });
   }
 
-  if (user?.password != body.password) {
-    c.status(403);
+  if (!user) {
+    c.status(404);
+    return c.json({ message: "user email does not exist" });
+  }
+
+  if (user.password != body.password) {
+    c.status(401);
     return c.json({ message: "Wrong creadentials" });
   }
 
+  let token: string;
+
   const payload = {
     userId: user.id,
-    exp: setExpiration()
+    exp: setExpiration(),
   };
 
-  if (user) {
-    const token = await sign(payload, c.env.JWT_SECRET);
-    c.status(200);
-    return c.json({ token });
-  } else {
-    c.status(404);
-    return c.json({ message: "not found" });
+  try {
+    token = await sign(payload, c.env.JWT_SECRET);
+  } catch (error) {
+    c.status(500);
+    return c.json({
+      message: "Something went wrong while creating  jwt token",
+    });
   }
+
+  c.status(200);
+  return c.json({ token });
 });
 
 export default userRoute;
