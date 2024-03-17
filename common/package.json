@@ -1,0 +1,16 @@
+{
+  "name": "@medium-blog/common",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Eshant Sonune",
+  "license": "ISC",
+  "description": "Medium's zod and types package dependencies.",
+  "devDependencies": {},
+  "dependencies": {
+    "typescript": "^5.4.2",
+    "zod": "^3.22.4"
+  }
+}
